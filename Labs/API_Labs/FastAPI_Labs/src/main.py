@@ -1,35 +1,45 @@
-from fastapi import FastAPI, status, HTTPException
-from pydantic import BaseModel
-from predict import predict_data
+# FastAPI_Labs/src/main.py
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from pathlib import Path
+import joblib
+import numpy as np
 
+app = FastAPI(title="Iris Model API", version="2.0")
 
-app = FastAPI()
+MODEL_PATH = Path(__file__).resolve().parent / "iris_model.pkl"
+_model = None
+_target_names = None
 
-class IrisData(BaseModel):
-    petal_length: float
-    sepal_length: float
-    petal_width: float
-    sepal_width: float
+class IrisFeatures(BaseModel):
+    sepal_length: float = Field(..., description="Sepal length in cm")
+    sepal_width: float  = Field(..., description="Sepal width in cm")
+    petal_length: float = Field(..., description="Petal length in cm")
+    petal_width: float  = Field(..., description="Petal width in cm")
 
-class IrisResponse(BaseModel):
-    response:int
+@app.on_event("startup")
+def load_model():
+    global _model, _target_names
+    if not MODEL_PATH.is_file():
+        raise RuntimeError(f"Model not found at {MODEL_PATH}. Run train.py first.")
+    bundle = joblib.load(MODEL_PATH)
+    _model = bundle["pipeline"]
+    _target_names = bundle["target_names"]
 
-@app.get("/", status_code=status.HTTP_200_OK)
-async def health_ping():
-    return {"status": "healthy"}
+@app.get("/")
+def root():
+    return {"message": "Iris Model API is running."}
 
-@app.post("/predict", response_model=IrisResponse)
-async def predict_iris(iris_features: IrisData):
-    try:
-        features = [[iris_features.sepal_length, iris_features.sepal_width,
-                    iris_features.petal_length, iris_features.petal_width]]
+@app.get("/health")
+def health():
+    ok = _model is not None
+    return {"status": "ok" if ok else "not_ready"}
 
-        prediction = predict_data(features)
-        return IrisResponse(response=int(prediction[0]))
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-
-
-    
+@app.post("/predict")
+def predict(features: IrisFeatures):
+    if _model is None:
+        raise HTTPException(status_code=500, detail="Model not loaded.")
+    x = np.array([[features.sepal_length, features.sepal_width, features.petal_length, features.petal_width]])
+    pred = _model.predict(x)[0]
+    label = _target_names[pred] if _target_names and 0 <= pred < len(_target_names) else str(pred)
+    return {"response": int(pred), "label": label}
