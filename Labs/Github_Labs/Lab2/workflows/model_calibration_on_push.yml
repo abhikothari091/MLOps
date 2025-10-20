@@ -1,65 +1,57 @@
-name: Model Retraining on Push to Main
+name: Model Retraining on Push
 
 on:
   push:
-    branches:
-      - main  # Trigger the workflow on pushes to the main branch
+    branches: [ main ]
+
+permissions:
+  contents: write
 
 jobs:
   retrain:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        model: [rf]  # add logreg to compare both
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.9
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: 'pip'
 
-    - name: Install dependencies
-      run: pip install -r requirements.txt
+      - name: Install deps
+        run: |
+          pip install -r requirements.txt
 
-    - name: Generate and Store Timestamp
-      run: |
-        timestamp=$(date '+%Y%m%d%H%M%S')
-        echo "$timestamp" > timestamp.txt
-      id: timestamp 
+      - name: Make timestamp (output)
+        id: ts
+        run: echo "value=$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
 
-    - name: Check File Permissions
-      run: |
-        ls -l ./src/train_model.py
+      - name: Train
+        run: |
+          python ./src/train_model.py --timestamp "${{ steps.ts.outputs.value }}" --model "${{ matrix.model }}"
 
-    - name: Set File Permissions
-      run: |
-        chmod +x ./src/train_model.py #making it executable
+      - name: Evaluate
+        run: |
+          python ./src/evaluate_model.py --timestamp "${{ steps.ts.outputs.value }}" --model "${{ matrix.model }}"
 
-    - name: Retrain Model
-      run: |
-        timestamp=$(cat timestamp.txt) # Use the timestamp in your training script
-        python ./src/train_model.py --timestamp "$timestamp"
+      - name: Upload artifacts (model & metrics)
+        uses: actions/upload-artifact@v4
+        with:
+          name: model_${{ steps.ts.outputs.value }}_${{ matrix.model }}
+          path: |
+            models/model_${{ steps.ts.outputs.value }}_${{ matrix.model }}.joblib
+            metrics/${{ steps.ts.outputs.value }}_*.json
 
-    - name: Evaluate Model and Log Metrics
-      run: |
-        timestamp=$(cat timestamp.txt) # Use the timestamp in your training script
-        python ./src/evaluate_model.py  --timestamp "$timestamp" # Assuming you have a script for model evaluation
-        metrics_filename="${timestamp}_metrics.json"
-        mv $metrics_filename $GITHUB_WORKSPACE/metrics/$metrics_filename
-      continue-on-error: false  # Continue even if evaluation fails
-
-    - name: Store and Version the New Model
-      run: |
-        timestamp=$(cat timestamp.txt)
-        model_filename="model_${timestamp}_dt_model.joblib"
-        mv $model_filename $GITHUB_WORKSPACE/models/$model_filename
-
-    - name: Commit and Push Changes
-      run: |
-        git config --global user.email "26876927+raminmohammadi@users.noreply.github.com"
-        git config --global user.name "raminmohammadi"
-        git add $GITHUB_WORKSPACE/metrics/$metrics_filename $GITHUB_WORKSPACE/models/$model_filename
-        git commit -m "Add metrics and updated model"
-        git push
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit model & metrics to repo
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add models/ metrics/
+          git commit -m "ci: add model & metrics (${{ steps.ts.outputs.value }} ${{ matrix.model }})" || echo "nothing to commit"
+          git push

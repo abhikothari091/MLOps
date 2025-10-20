@@ -1,67 +1,57 @@
-name: Periodic Model Calibration
+name: Model Calibration on Push
 
-on: 
-  schedule:
-    - cron: '0 0 * * *'  #minutes, hours, day, month, day of week 
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
 
 jobs:
-  retrain:
+  calibrate:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        model: [rf]
+        method: [isotonic, sigmoid]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.9
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: 'pip'
 
-    - name: Install dependencies
-      run: pip install -r requirements.txt
+      - name: Install deps
+        run: pip install -r requirements.txt
 
-    - name: Generate and Store Timestamp
-      run: |
-        timestamp=$(date '+%Y%m%d%H%M%S')
-        echo "$timestamp" > timestamp.txt
-      id: timestamp 
+      - name: Find latest timestamp for this model
+        id: latest
+        shell: bash
+        run: |
+          ls -1 models/model_*_${{ matrix.model }}.joblib | sed -E 's#.*/model_([0-9]{14})_.*#\1#' | sort | tail -n1 > latest_ts.txt
+          echo "value=$(cat latest_ts.txt)" >> "$GITHUB_OUTPUT"
 
-    - name: Check File Permissions
-      run: |
-        ls -l ./src/train_model.py
+      - name: Calibrate
+        run: |
+          python ./src/calibrate_model.py \
+            --timestamp "${{ steps.latest.outputs.value }}" \
+            --model "${{ matrix.model }}" \
+            --method "${{ matrix.method }}"
 
-    - name: Set File Permissions
-      run: |
-        chmod +x ./src/train_model.py
+      - name: Upload calibrated artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibrated_${{ steps.latest.outputs.value }}_${{ matrix.model }}_${{ matrix.method }}
+          path: |
+            models/model_${{ steps.latest.outputs.value }}_${{ matrix.model }}_cal_${{ matrix.method }}.joblib
+            metrics/${{ steps.latest.outputs.value }}_calibration_${{ matrix.method }}.json
 
-    - name: Retrain Model
-      run: |
-        timestamp=$(cat timestamp.txt) # Use the timestamp in your training script
-        python ./src/train_model.py --timestamp "$timestamp"
-
-    - name: Evaluate Model and Log Metrics
-      run: |
-        timestamp=$(cat timestamp.txt) # Use the timestamp in your training script
-        python ./src/evaluate_model.py  --timestamp "$timestamp" # Assuming you have a script for model evaluation
-        metrics_filename="${timestamp}_metrics.json"
-        mv $metrics_filename $GITHUB_WORKSPACE/metrics/$metrics_filename
-      continue-on-error: false  # Continue even if evaluation fails
-
-    - name: Store and Version the New Model
-      run: |
-        timestamp=$(cat timestamp.txt)
-        model_filename="model_${timestamp}_dt_model.joblib"
-        mv $model_filename $GITHUB_WORKSPACE/models/$model_filename
-
-    - name: Commit and Push Changes
-      run: |
-        git config --global user.email "26876927+raminmohammadi@users.noreply.github.com"
-        git config --global user.name "raminmohammadi"
-        git add $GITHUB_WORKSPACE/metrics/$metrics_filename $GITHUB_WORKSPACE/models/$model_filename
-        git commit -m "Add metrics and updated model"
-        git push
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
-
+      - name: Commit calibrated model & metrics
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add models/ metrics/
+          git commit -m "ci: add calibrated model & metrics (${{ steps.latest.outputs.value }} ${{ matrix.model }} ${{ matrix.method }})" || echo "nothing to commit"
+          git push
