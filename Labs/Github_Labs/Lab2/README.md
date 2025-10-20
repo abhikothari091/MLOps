@@ -14,8 +14,6 @@ This lab automates a simple ML lifecycle using GitHub Actions: train a model, ev
 	•	Training/eval workflow runs on every push to main and uploads artifacts.
 	•	Calibration workflow finds latest model and produces calibrated variants.
 	•	Commits models/ and metrics/ back to the repo (and uploads artifacts).
-	•	Compatibility note
-	•	CalibratedClassifierCV now uses estimator= (scikit-learn ≥ 1.4). If needed, add a small try/except to support older versions.
 
 ---
 
