@@ -1,115 +1,135 @@
-Docker Lab – Containerized Model Training (Iris)
+# Docker Lab – Containerized Model Training (Iris)
 
 This lab demonstrates how to containerize a simple machine learning training workflow using Docker. The project trains a Random Forest classifier on the Iris dataset inside a Docker container, evaluates it, and saves the trained model to a configurable directory. The goal is to help you understand how to build, run, and persist ML models in isolated, reproducible environments.
 
-⸻
+---
 
-1. Overview of Improvements
+## 1. Overview of Improvements
 
-We enhanced the starter code to make it more production-like and modular:
-	•	Training pipeline modularization:
-	•	Moved all logic to src/train.py and separated evaluation into src/evaluate.py.
-	•	Configurable model saving:
-	•	The trained model is written to a configurable folder using MODEL_DIR or --model-dir.
-	•	Dependency management:
-	•	Docker installs Python dependencies from requirements.txt.
-	•	Local model persistence:
-	•	You can mount a local folder (./models) to persist the trained model even after the container exits.
-	•	Docker best practices applied:
-	•	Added a .dockerignore to avoid copying unnecessary files.
-	•	Structured the Dockerfile to use caching effectively.
+We enhanced the starter code to make it more modular and closer to a real-world setup:
 
-⸻
+### Training pipeline modularization
+- Moved all logic to `src/train.py`
+- Separated evaluation into `src/evaluate.py`
 
-2. Project Structure
+### Configurable model saving
+- Trained model is written to a configurable folder using:
+  - env var: `MODEL_DIR`
+  - or CLI arg: `--model-dir`
 
+### Dependency management
+- Docker installs Python dependencies from `requirements.txt`
+
+### Local model persistence
+- You can mount a local folder (e.g. `./models`) to persist the trained model even after the container exits
+
+### Docker best practices
+- Added a `.dockerignore` to avoid copying unnecessary files
+- Structured the Dockerfile to use caching effectively
+
+---
+
+## 2. Project Structure
+
+```
 .
 ├── src
 │   ├── train.py         # Trains the Random Forest classifier
 │   ├── evaluate.py      # Evaluates the saved model
-│   └── utils.py         # Optional helper utilities
+│   └── utils.py         # (optional) helper utilities
 ├── requirements.txt     # Python dependencies
 ├── Dockerfile           # Docker image definition
 ├── .dockerignore        # Files to exclude during image build
 └── README.md            # Documentation
+```
 
+---
 
-⸻
+## 3. How It Works
 
-3. How It Works
+### Training workflow
 
-Training Workflow
-	1.	The container starts by running train.py.
-	2.	train.py:
-	•	Loads the Iris dataset from sklearn.datasets.
-	•	Splits data into training and test sets.
-	•	Trains a Random Forest Classifier.
-	•	Saves the trained model (iris_model.pkl) to /app/models or the path specified in the environment variable MODEL_DIR.
+1. The container starts by running `train.py` (default CMD in Dockerfile).
+2. `train.py`:
+   - Loads the Iris dataset from `sklearn.datasets`
+   - Splits data into train/test
+   - Trains a `RandomForestClassifier`
+   - Saves the trained model (default: `iris_model.pkl`) to `/app/models` or to the path specified by `MODEL_DIR`
 
-Evaluation Workflow
-	1.	The evaluation script (evaluate.py) can be run manually or as a separate container command.
-	2.	It loads the saved model and computes accuracy/F1-score on the Iris dataset.
+### Evaluation workflow
 
-⸻
+- The `src/evaluate.py` script can be run:
+  - Manually, or
+  - As a separate Docker command
+- It:
+  - Loads the saved model
+  - Loads the Iris dataset again
+  - Reports metrics (accuracy / F1)
 
-4. Dockerfile Breakdown
+---
 
-# Use an official Python runtime
-FROM python:3.9
+## 4. Dockerfile (final version)
 
-# Set the working directory
-WORKDIR /app
+Key points:
+- `--no-cache-dir` keeps the image smaller
+- We create `/app/models` so the script has a place to write
+- Code + config are separated — you can change output dir at runtime
 
-# Copy project files into the container
-COPY src/ ./src
-COPY requirements.txt ./
+---
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+## 5. Building and Running the Container
 
-# Create model output directory
-RUN mkdir -p /app/models
+### 5.1 Build the image
 
-# Run training script by default
-CMD ["python", "src/train.py"]
-
-Key Improvements:
-	•	Uses --no-cache-dir for smaller image size.
-	•	Follows the 12-factor app principle by separating code and config.
-	•	Creates the model directory inside the image.
-
-⸻
-
-5. Building and Running the Container
-
-Build the Image
-
+```bash
 docker build -t iris-train:latest .
+```
 
-Run Training (Ephemeral)
+### 5.2 Run training (ephemeral)
 
+```bash
 docker run --rm iris-train:latest
+```
 
-➡️ This will train the model and print:
-
+You should see something like:
+```
 [train] model saved to /app/models/iris_model.pkl
+```
 
-Run and Persist Model Output
+This means the container ran, trained the model, and wrote it inside the container.
 
-To keep the trained model locally:
+---
 
+### 5.3 Run and persist model output
+
+By default, anything written inside the container is lost when it stops.
+
+To keep the model locally:
+
+```bash
 mkdir -p models
 docker run --rm -v $(pwd)/models:/app/models iris-train:latest
+```
 
-➡️ The model file will be available at:
-
+Now the model will be available on your Mac at:
+```
 ./models/iris_model.pkl
+```
 
-Run Evaluation
+---
 
-Once the model is saved:
+### 5.4 Run evaluation
 
+Once the model is saved (either inside the image or via a mounted volume), you can run:
+
+```bash
 docker run --rm -v $(pwd)/models:/app/models iris-train:latest python src/evaluate.py
+```
 
+This:
+- Mounts your local `./models` → `/app/models` in the container
+- Runs the evaluation script
+- Loads `/app/models/iris_model.pkl`
+- Prints evaluation metrics
 
-⸻
+---
