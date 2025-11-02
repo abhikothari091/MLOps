@@ -1,14 +1,19 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9
+# Dockerfile
+FROM python:3.9-slim
 
-# Set the working directory in the container
+# 1) create workdir
 WORKDIR /app
 
-# Copy the model training script into the container
-COPY src/ .
+# 2) copy requirements first (better layer caching)
+COPY requirements.txt .
 
-# Install Scikit-Learn and joblib
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Run the script when the container launches
-CMD ["python", "main.py"]
+# 3) copy source
+COPY src/ ./src/
+
+# 4) default envs (can be overridden at docker run)
+ENV MODEL_DIR=/app/models
+
+# 5) default command: train
+CMD ["python", "src/train.py"]
