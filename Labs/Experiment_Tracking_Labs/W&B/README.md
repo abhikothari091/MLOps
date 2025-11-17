@@ -149,4 +149,5 @@ These improvements make the lab more realistic and closer to actual industry wor
 
 ## 📌 Final Notes
 
-This version of the lab is significantly richer and fully aligned with experiment-tracking best practices. The code is modular, visual, and ready for extension (e.g., sweeps, hyperparameter tuning, comparing models, logging artifacts).
+1. This version of the lab is significantly richer and fully aligned with experiment-tracking best practices. The code is modular, visual, and ready for extension (e.g., sweeps, hyperparameter tuning, comparing models, logging artifacts).
+2. I have gitignored the reports and the model weights and just kept the lab1 and readme, you can trace the results in the ipynb outputs.
