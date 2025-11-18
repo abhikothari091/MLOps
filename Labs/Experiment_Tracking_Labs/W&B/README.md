@@ -34,8 +34,6 @@ We wrapped the workflow in:
 train_random_forest(config)
 ```
 
-so the student can run multiple W&B sweeps later.
-
 ### 5. Improved experiment logging
 
 We added:
@@ -51,7 +49,7 @@ We added:
 
 ```
 .
-├── Lab1.ipynb            # Your updated notebook using RF + W&B
+├── Lab1.ipynb            # updated notebook using RF + W&B
 ├── README.md             # This file
 └── dermatology.data      # UCI dataset used in the lab
 ```
